@@ -1,9 +1,9 @@
 import { toHex } from "@midnight-ntwrk/midnight-js-utils";
 import { MidnightBech32m, UnshieldedAddress } from "@midnight-ntwrk/wallet-sdk-address-format";
 
-const STORAGE_KEY = "polypay:secret";
-const CONTRACT_KEY = "polypay:contract";
-const VAULT_KEY_KEY = "polypay:vault-key";
+const STORAGE_KEY = "mpay:secret";
+const CONTRACT_KEY = "mpay:contract";
+const VAULT_KEY_KEY = "mpay:vault-key";
 
 export function formatError(e: unknown): string {
   console.error("[formatError] Full error object:", e);
@@ -65,7 +65,11 @@ export function loadVaultKey(): string | null {
 }
 
 export function clearSession() {
+  // Vault key is scoped to the multisig contract — drop it alongside the
+  // contract address so the next connect starts clean instead of silently
+  // reusing a key that no longer matches anything.
   localStorage.removeItem(CONTRACT_KEY);
+  localStorage.removeItem(VAULT_KEY_KEY);
 }
 
 export function clearAll() {

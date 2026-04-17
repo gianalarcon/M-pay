@@ -28,7 +28,7 @@ export function Sidebar({
         </div>
         <div className="flex flex-col">
           <span className="text-2xl font-black text-on-surface tracking-tighter font-headline">
-            PolyPay
+            M-pay
           </span>
           <span className="text-[10px] text-outline font-label tracking-widest uppercase">
             Midnight Network

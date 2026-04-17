@@ -1,6 +1,6 @@
-# PolyPay — Private Multisig Wallet on Midnight
+# M-pay — Private Multisig Wallet on Midnight
 
-A privacy-preserving multisig wallet built on the **Midnight blockchain (Preprod network)**. Signers are identified by ZK commitments (hash of secret), not public keys. Nobody on-chain can tell which signer approved which transaction.
+A privacy-preserving multisig wallet built on the **Midnight blockchain (Preprod network)**. Signers are identified by ZK commitments (hash of a browser-local secret), not public keys. Nobody on-chain can tell which signer approved which transaction. Transfer recipient and amount are encrypted with a vault key shared among signers.
 
 ## Prerequisites
 
@@ -46,10 +46,9 @@ Verify it's running: `curl http://127.0.0.1:6300/health` should respond.
 
 ```bash
 # 1. Install dependencies
-cd polypay
 npm install
 
-# 2. Compile both contracts (generates ZK proving/verifying keys)
+# 2. Compile contracts (generates ZK proving/verifying keys)
 cd contract
 npm run compact
 npm run build
@@ -62,144 +61,91 @@ npm run dev
 
 Open http://localhost:5173 in Chrome with Lace wallet installed.
 
-> **Note:** `npm run dev` automatically copies ZK keys from both contracts (`polypay` + `token`) into `web/public/keys/` and `web/public/zkir/`. No manual copy needed.
+> **Note:** `npm run dev` automatically copies ZK keys from `mpay` and `token` contracts into `web/public/keys/` and `web/public/zkir/`. No manual copy needed.
 
 ## Usage Guide
 
 ### 1. Connect Wallet
 
-- Click "Connect Wallet" — Lace popup will ask to connect
+- Click "Connect Lace Wallet" — Lace popup asks to connect
 - First connection: Lace asks you to sign a message to derive your signer secret
-- Secret is saved to localStorage and reused on subsequent visits
+- Secret is saved to localStorage and auto-reconnects on future visits
 
-### 2. Deploy Token
+### 2. Deploy or Reconnect Token
 
-- Go to Token page → Deploy Token (creates the token contract)
-- Mint tokens to your own address (you'll need these to deposit into the vault)
+Go to the Token tab:
 
-### 3. Deploy Multisig
+- **Deploy New** — creates a fresh shielded token contract (`mintShieldedToken`). You'll be shown a 32-byte `tokenColor` which identifies this token on-chain.
+- **Reconnect Existing** — paste a previously deployed token contract address
 
-> **Important:** You must deploy the token first (step 2) and copy its **token color** from the Token page. The multisig contract needs this color to know which token the vault holds.
+Then mint tokens to any shielded address (paste `mn_shield-addr_...` or click "Use my shielded address").
 
-This is a 3-phase process (see [ADR-003](docs/adr/003-multisig-setup-phase.md) for why):
+> Midnight has no on-chain token metadata standard, so Lace wallet will show the token as "Shielded unnamed token (...)". The M-pay dApp labels it `MPAY`.
 
-1. **Deploy** — paste token color, set threshold → you become the first signer
-2. **Init Signers** — add other signers by their commitment (they share it with you off-chain)
-3. **Finalize** — locks the contract, clears deployer privilege
+### 3. Setup Multisig
 
-### 4. Deposit
+In the Setup tab:
 
-- Any user can deposit native tokens into the vault
-- No signer authentication needed for deposits
+- **Step 1: Deploy Shielded Token** — if you haven't deployed yet, the card routes you to the Token tab (skip this if you're joining an existing multisig)
+- **Deploy Multisig** — paste the token color, set threshold, deploy. You become the first signer. The dApp generates a random **vault key** and stores it in localStorage. Share the hex vault key with co-signers out-of-band (copy from the dashboard card after deploy).
+- **Join Existing** — paste the multisig contract address + import the vault key. The dApp checks you are a registered signer on-chain; otherwise join is rejected.
 
-### 5. Propose → Approve → Execute
+### 4. Add Signers + Finalize
 
-- **Propose**: any signer creates a proposal (auto-approves, count starts at 1)
-- **Approve**: other signers approve (nullifier prevents double-vote)
-- **Execute**: any signer triggers execution when approvals >= threshold
+Init-signers phase:
 
-## Architecture
+- Paste each co-signer's commitment (they generate it by connecting their own wallet and copy from Identity card)
+- "Current Signers" card auto-refreshes after each add
+- When `signerCount >= threshold`, click **Finalize** to lock the contract
 
-```
-polypay/
-├── contract/   Compact smart contracts (polypay.compact + token.compact)
-├── api/        PolyPayAPI + TokenAPI
-├── web/        React + Vite + Tailwind + Lace DApp Connector
-└── docs/       ADRs and design specs
-```
+### 5. Deposit
 
-### polypay.compact (15 circuits)
+Deposit shielded MPAY from your wallet into the vault:
 
-| Category | Circuits |
-|----------|----------|
-| Setup | constructor, initSigner, finalize |
-| Token | deposit |
-| Propose | proposeTransfer, proposeAddSigner, proposeRemoveSigner, proposeSetThreshold |
-| Approve | approveTx |
-| Execute | executeTransfer, executeAddSigner, executeRemoveSigner, executeSetThreshold |
-| Pure | deriveCommitment, computeNullifier |
+- Enter an amount (creates a new shielded coin with that value)
+- The coin is sent into the vault keyed by a deposit counter
+- After success the amount input clears automatically
 
-### token.compact (3 circuits)
+### 6. Propose Transfer
 
-| Category | Circuits |
-|----------|----------|
-| Setup | constructor |
-| Token | mint |
-| Pure | deriveCommitment |
+- Paste recipient shielded address (`mn_shield-addr_...`) or click "Use my shielded address"
+- Select a vault coin from the list (full-coin-spend, no partial amounts — Midnight budget constraint)
+- Click Propose — dApp encrypts `(recipientCpk, recipientEpk, amount)` with the vault key and stores ciphertext in `txData0–3`
 
-### Protocol Flow
+### 7. Approve + Execute
 
-```
-SETUP PHASE
-  1. Deploy(threshold, tokenColor) — creates contract, deployer = first signer
-  2. initSigner(commitment)        — owner adds other signers (repeat)
-  3. finalize()                    — locks contract, clears owner
+In the Transactions tab:
 
-TOKEN (separate token.compact contract)
-  - mint(amount, to)               — mint tokens to a user address
+- Each tx shows type-specific details:
+  - Transfer: recipient shielded address (decrypted) + amount, click to copy
+  - Add/Remove signer: commitment hex, click to copy
+  - Set threshold: new value
+- Approvals column shows `approvals/threshold` (e.g. `2/3`)
+- Signers click **Approve** (nullifier prevents double-vote) until count reaches threshold
+- Once stamped **READY**, any signer can **Execute**
 
-OPERATIONAL PHASE
-  4. deposit(amount)               — deposit native tokens into vault (no auth)
-  5. propose*(...)                 — signer creates proposal, auto-approves (count=1)
-  6. approveTx(txId)               — other signers approve (nullifier prevents double-vote)
-  7. execute*(txId)                — signer executes when approvals >= threshold
-```
+> **Recipient receives the coin only if they execute the transfer themselves.** `sendShielded` does not currently create coin ciphertexts for external wallets, so the recipient should be a signer who executes.
 
-### Transaction Types
+> **Important — back up your signer secret and vault key.** Browsers can lose state. See [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md#back-up-your-keys).
 
-| Type | Propose | Execute | Description |
-|------|---------|---------|-------------|
-| 0 | proposeTransfer(to, amount) | executeTransfer(txId) | Transfer from vault to recipient |
-| 2 | proposeAddSigner(commitment) | executeAddSigner(txId) | Add new signer |
-| 3 | proposeRemoveSigner(commitment) | executeRemoveSigner(txId) | Remove signer (keeps count >= threshold) |
-| 4 | proposeSetThreshold(value) | executeSetThreshold(txId) | Change approval threshold |
+## Known Limitations
 
-### Privacy Model
+- **Vault key must be shared out-of-band** — dApp generates one per multisig; deployer copies the hex and gives to co-signers. Per-signer encryption doesn't fit Midnight's circuit budget.
+- **Partial-value transfers not supported** — Transfers spend a full vault coin. Deposit the exact amount you want to send.
+- **Recipient must execute their own transfer** — `sendShielded` on Midnight currently doesn't notify external wallets. If the recipient isn't a signer, they won't see the coin after execute.
+- **Token name invisible in Lace wallet** — Midnight has no on-chain token metadata standard. Lace shows custom tokens as "Shielded unnamed token (…)". The dApp labels it `MPAY`.
+- **Stale ready-stamp after threshold change** — a pending tx's ready status is computed at approval time, not re-checked when `setThreshold` changes the threshold later. Rescued by the on-chain `stampReady(txId)` circuit: when a pending tx already meets the current threshold, the UI shows a "Stamp Ready" button (amber "NEEDS STAMP" badge) that anyone can click to refresh its status. After stamping, Execute becomes available.
+- **Browser-local state, no sync** — clearing localStorage or switching browser = new signer identity.
+- **No on-chain unit tests** — tested end-to-end on preprod only.
 
-| What's Private (ZK protected) | What's Public (on-chain) |
-|-------------------------------|--------------------------|
-| Signer identity (secret never leaves browser) | Signer commitments (hashes, not linked to identity) |
-| Who approved which transaction (nullifiers are unlinkable) | Approval count per transaction |
-| Signer's secret key | Transfer amounts and recipients |
-| Which signer executed a transaction | Transaction types and statuses |
-| | Threshold value |
-| | Token vault balance |
+Full context in [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md#pending--known-limitations) and [docs/SHIELDED_TOKEN_STATUS.md](docs/SHIELDED_TOKEN_STATUS.md).
 
-## What's Done
+## Further reading
 
-### Features
-
-- Full multisig lifecycle: deploy → init signers → finalize → propose → approve → execute
-- 4 transaction types: transfer, add signer, remove signer, set threshold
-- Separate token contract for minting
-- Deposit native tokens into vault
-- Web UI: dashboard, identity card, signer list, transaction list, token page
-- Secret persistence in localStorage with auto-rejoin on reload
-- Session persistence (contract address saved, reconnects automatically)
-
-### Design Trade-offs
-
-| What we built | What we excluded | Why |
-|---------------|-----------------|-----|
-| Full multisig (15 circuits) | Batch initSigner | Midnight circuit limit ~13 per deploy tx. Compact has no dynamic-length params. ([ADR-003](docs/adr/003-multisig-setup-phase.md)) |
-| deposit (receiveUnshielded) | withdraw circuit | Removed to fit circuit limit after adding signer checks to execute circuits. ([ADR-001](docs/adr/001-witness-required-for-execute-circuits.md)) |
-| Signer privacy via commitment/nullifier | Shielded transfers (hidden amounts) | Amount/recipient are public. Shielded token system is significantly more complex, out of MVP scope. |
-| Execute requires signer proof | Anyone-can-execute | Compact compiler produces invalid proofs for witness-free circuits with complex cross-map writes. Adding witness fixed it and improved security. ([ADR-001](docs/adr/001-witness-required-for-execute-circuits.md)) |
-| Secret from signData + localStorage | Deterministic derivation from wallet | BIP-340 Schnorr signatures are non-deterministic. HD seed is inaccessible from dApp connector. ([ADR-002](docs/adr/002-signer-secret-persistence.md)) |
-| 3-phase setup (deploy/init/finalize) | Single-transaction deploy | Circuit limit + no variable-length constructor params in Compact. ([ADR-003](docs/adr/003-multisig-setup-phase.md)) |
-| Token metadata on-chain (name, symbol) | Off-chain metadata server | No metadata server infra yet. On-chain works for testing. Will migrate later. ([ADR-004](docs/adr/004-token-metadata-strategy.md)) |
-| Threshold public on ledger | Hidden threshold (hash + salt) | Threshold leaks via execution pattern regardless. Hiding adds salt-sharing complexity for no long-term privacy gain. ([ADR-005](docs/adr/005-threshold-privacy-analysis.md)) |
-
-## What's Pending
-
-- **Shielded transfers** — hide transfer amounts and recipients using shielded token system
-- **Off-chain token metadata** — migrate from on-chain storage to Midnight metadata server ([ADR-004](docs/adr/004-token-metadata-strategy.md))
-- **Export/import secret** — backup and restore signer identity across browsers
-- **Unit tests** — contract-level tests (examples have tests, polypay does not yet)
-- **Off-chain signer coordination** — channel for sharing commitments between signers
-- **Withdraw circuit** — re-add if circuit count can be reduced elsewhere
-- **localStorage namespace** — storage keys are global (`polypay:secret`), not scoped by network or wallet. Switching wallets or networks on the same browser will overwrite the previous session
-- **Vault balance display** — `unshieldedBalancesObservable` (SDK) and direct GraphQL `contractAction.unshieldedBalances` both return `[]` for the contract address after `receiveUnshielded()`. Suspected SDK/indexer bug on Preprod. Vault balance currently shows "0" in the UI despite successful deposits. Workaround: pending upstream fix or alternative query method
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — repo structure, contracts, transaction types, privacy model, key files
+- [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md) — design trade-offs, UX features, backup keys, known limitations
+- [docs/SHIELDED_TOKEN_STATUS.md](docs/SHIELDED_TOKEN_STATUS.md) — shielded-ops investigation timeline (error 186, recipient notification)
+- [docs/adr/](docs/adr/) — ADRs documenting individual design decisions
 
 ## Dependencies
 
@@ -210,6 +156,7 @@ OPERATIONAL PHASE
 | Midnight JS SDK | 4.0.2 |
 | DApp Connector API | 4.0.1 |
 | Proof Server | 8.0.3 |
+| Ledger | v8 |
 | React | 19.x |
 | Vite | 7.x |
 | Tailwind CSS | 4.x |

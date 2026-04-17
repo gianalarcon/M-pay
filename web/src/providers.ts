@@ -1,5 +1,5 @@
-import { type PolyPayCircuitKeys, type PolyPayProviders } from "../../api/src/index.js";
-import { type PolyPayPrivateState } from "../../contract/src/index.js";
+import { type MPayCircuitKeys, type MPayProviders } from "../../api/src/index.js";
+import { type MPayPrivateState } from "../../contract/src/index.js";
 import { fromHex, toHex } from "@midnight-ntwrk/compact-runtime";
 import {
   concatMap,
@@ -30,14 +30,26 @@ import semver from "semver";
 
 const COMPATIBLE_CONNECTOR_API_VERSION = "4.x";
 
-let cachedProviders: Promise<PolyPayProviders> | undefined;
+let cachedProviders: Promise<MPayProviders> | undefined;
 let cachedConnectedAPI: ConnectedAPI | undefined;
 let cachedUnshieldedAddress: Uint8Array | undefined;
 let cachedUnshieldedAddressBech32m: string | undefined;
 let cachedShieldedCoinPublicKey: string | undefined;
+let cachedShieldedAddress: string | undefined;
 let cachedIndexerUri: string | undefined;
 
-export const getProviders = (): Promise<PolyPayProviders> => {
+// Subscribers get notified as a submitted circuit progresses through stages
+// (proof gen → wallet interaction → network submit). "wallet" covers
+// unlock + balance + sign as one atomic step (SDK can't split them).
+type TxStage = "wallet" | "submitting";
+type TxStageListener = (stage: TxStage) => void;
+let txStageListener: TxStageListener | null = null;
+
+export const setTxStageListener = (fn: TxStageListener | null): void => {
+  txStageListener = fn;
+};
+
+export const getProviders = (): Promise<MPayProviders> => {
   return cachedProviders ?? (cachedProviders = initializeProviders());
 };
 
@@ -56,6 +68,11 @@ export const getShieldedCoinPublicKey = (): string => {
   return cachedShieldedCoinPublicKey;
 };
 
+export const getShieldedAddress = (): string => {
+  if (!cachedShieldedAddress) throw new Error("Wallet not connected");
+  return cachedShieldedAddress;
+};
+
 export const getUnshieldedAddress = (): string => {
   if (!cachedUnshieldedAddressBech32m) throw new Error("Wallet not connected");
   return cachedUnshieldedAddressBech32m;
@@ -66,12 +83,12 @@ export const getIndexerUri = (): string => {
   return cachedIndexerUri;
 };
 
-const initializeProviders = async (): Promise<PolyPayProviders> => {
+const initializeProviders = async (): Promise<MPayProviders> => {
   const networkId = (import.meta.env.VITE_NETWORK_ID ?? "preprod") as string;
   const connectedAPI = await connectToWallet(networkId);
   cachedConnectedAPI = connectedAPI;
   const zkConfigPath = window.location.origin;
-  const baseProvider = new FetchZkConfigProvider<PolyPayCircuitKeys>(zkConfigPath, fetch.bind(window));
+  const baseProvider = new FetchZkConfigProvider<MPayCircuitKeys>(zkConfigPath, fetch.bind(window));
   // Wrapper: throw for system circuits (midnight/*) so http-client-proof-provider
   // passes undefined keyMaterial and the proof server uses its built-in system keys.
   // Without this, vite SPA fallback returns index.html for missing /keys/midnight/...
@@ -91,9 +108,12 @@ const initializeProviders = async (): Promise<PolyPayProviders> => {
   });
   const config = await connectedAPI.getConfiguration();
   cachedIndexerUri = config.indexerUri;
-  const privateStateProvider = inMemoryPrivateStateProvider<string, PolyPayPrivateState>();
+  const privateStateProvider = inMemoryPrivateStateProvider<string, MPayPrivateState>();
   const shieldedAddresses = await connectedAPI.getShieldedAddresses();
   cachedShieldedCoinPublicKey = shieldedAddresses.shieldedCoinPublicKey;
+  // Combined bech32m shielded address (cpk + encryption pk). Preferred for UI
+  // display — users paste and read these, not raw 32-byte cpk hex.
+  cachedShieldedAddress = (shieldedAddresses as { shieldedAddress?: string }).shieldedAddress;
 
   const { unshieldedAddress } = await connectedAPI.getUnshieldedAddress();
   cachedUnshieldedAddressBech32m = unshieldedAddress;
@@ -114,6 +134,10 @@ const initializeProviders = async (): Promise<PolyPayProviders> => {
         return shieldedAddresses.shieldedEncryptionPublicKey;
       },
       balanceTx: async (tx: UnboundTransaction): Promise<FinalizedTransaction> => {
+        // Wallet interaction starts — unlock (if locked), balance, then sign.
+        // All happen inside this single call; consumers can show a timed
+        // "wallet may be locked" hint if this stage doesn't progress quickly.
+        txStageListener?.("wallet");
         const serializedTx = toHex(tx.serialize());
         const received = await connectedAPI.balanceUnsealedTransaction(serializedTx);
         return Transaction.deserialize<SignatureEnabled, Proof, Binding>(
@@ -126,6 +150,7 @@ const initializeProviders = async (): Promise<PolyPayProviders> => {
     },
     midnightProvider: {
       submitTx: async (tx: FinalizedTransaction): Promise<TransactionId> => {
+        txStageListener?.("submitting");
         await connectedAPI.submitTransaction(toHex(tx.serialize()));
         return tx.identifiers()[0];
       },

@@ -1,21 +1,19 @@
-import { PolyPay } from "../../contract/src/index.js";
-import { CompiledPolyPayContract } from "../../contract/src/index.js";
+import { MPay } from "../../contract/src/index.js";
+import { CompiledMPayContract } from "../../contract/src/index.js";
 import { type ContractAddress } from "@midnight-ntwrk/compact-runtime";
 import { type Logger } from "pino";
 import {
-  type PolyPayDerivedState,
-  type PolyPayProviders,
-  type DeployedPolyPayContract,
+  type MPayDerivedState,
+  type MPayProviders,
+  type DeployedMPayContract,
   type TransactionInfo,
-  polyPayPrivateStateKey,
+  mPayPrivateStateKey,
 } from "./common-types.js";
 import * as utils from "./utils.js";
 import * as crypto from "./crypto.js";
 import { deployContract, findDeployedContract } from "@midnight-ntwrk/midnight-js-contracts";
 import { map, type Observable } from "rxjs";
-import { type PolyPayPrivateState, createPolyPayPrivateState } from "../../contract/src/index.js";
-import { persistentHash, CompactTypeVector, CompactTypeBytes } from "@midnight-ntwrk/compact-runtime";
-
+import { type MPayPrivateState, createMPayPrivateState } from "../../contract/src/index.js";
 // Convert bigint to 32-byte little-endian. Matches Compact's `x as Field as Bytes<32>`
 // which uses compact-runtime's `convertFieldToBytes` (LSB at index 0, MSB at index 31).
 function bigintToBytes32LE(value: bigint): Uint8Array {
@@ -29,15 +27,9 @@ function bigintToBytes32LE(value: bigint): Uint8Array {
   return bytes;
 }
 
-// Compute proposal hash matching Compact: persistentHash<Vector<2, Bytes<32>>>([cpk, amountBytes])
-const proposalHashType = new CompactTypeVector(2, new CompactTypeBytes(32));
-function computeProposalHash(recipientCpk: Uint8Array, amount: bigint): Uint8Array {
-  return persistentHash(proposalHashType, [recipientCpk, bigintToBytes32LE(amount)]);
-}
-
-export interface DeployedPolyPayAPI {
+export interface DeployedMPayAPI {
   readonly deployedContractAddress: ContractAddress;
-  readonly state$: Observable<PolyPayDerivedState>;
+  readonly state$: Observable<MPayDerivedState>;
 
   // Setup
   initSigner: (commitment: Uint8Array) => Promise<void>;
@@ -46,9 +38,11 @@ export interface DeployedPolyPayAPI {
   // Deposit shielded tNIGHT
   deposit: (coin: { nonce: Uint8Array; color: Uint8Array; value: bigint }) => Promise<void>;
 
-  // Propose (transfer is encrypted)
+  // Propose (transfer is encrypted). Stores both coin + encryption public keys
+  // so the full shielded address can be rebuilt when decrypting for display.
   proposeTransfer: (
     recipientCpk: Uint8Array,
+    recipientEpk: Uint8Array,
     amount: bigint,
     vaultKey: CryptoKey,
   ) => Promise<void>;
@@ -58,6 +52,10 @@ export interface DeployedPolyPayAPI {
 
   // Approve
   approveTx: (txId: bigint) => Promise<void>;
+
+  // Re-stamp a pending tx whose approval count meets the current threshold
+  // (rescue after executeSetThreshold lowers the threshold).
+  stampReady: (txId: bigint) => Promise<void>;
 
   // Execute (transfer reads from witness)
   executeTransfer: (
@@ -75,16 +73,16 @@ export interface DeployedPolyPayAPI {
   getSignerList: () => Promise<Uint8Array[]>;
   getEncryptedTransferData: (
     txId: bigint,
-  ) => Promise<{ enc0: Uint8Array; enc1: Uint8Array; enc2: Uint8Array } | null>;
+  ) => Promise<{ enc0: Uint8Array; enc1: Uint8Array; enc2: Uint8Array; enc3: Uint8Array } | null>;
   getVaultCoins: () => Promise<{ key: Uint8Array; value: bigint }[]>;
 }
 
-export class PolyPayAPI implements DeployedPolyPayAPI {
-  private readonly providers: PolyPayProviders;
+export class MPayAPI implements DeployedMPayAPI {
+  private readonly providers: MPayProviders;
 
   private constructor(
-    public readonly deployedContract: DeployedPolyPayContract,
-    providers: PolyPayProviders,
+    public readonly deployedContract: DeployedMPayContract,
+    providers: MPayProviders,
     private readonly logger?: Logger,
   ) {
     this.providers = providers;
@@ -93,7 +91,7 @@ export class PolyPayAPI implements DeployedPolyPayAPI {
       .contractStateObservable(this.deployedContractAddress, { type: "latest" })
       .pipe(
         map((contractState) => {
-          const l = PolyPay.ledger(contractState.data);
+          const l = MPay.ledger(contractState.data);
           // Sum vault balance across all deposit slots
           let vaultBalance = 0n;
           try {
@@ -119,7 +117,7 @@ export class PolyPayAPI implements DeployedPolyPayAPI {
   }
 
   readonly deployedContractAddress: ContractAddress;
-  readonly state$: Observable<PolyPayDerivedState>;
+  readonly state$: Observable<MPayDerivedState>;
 
   // Setup
   async initSigner(commitment: Uint8Array): Promise<void> {
@@ -138,16 +136,22 @@ export class PolyPayAPI implements DeployedPolyPayAPI {
     await this.deployedContract.callTx.deposit(coin);
   }
 
-  // Propose — generic circuit, type-specific data in d0-d3
+  // Propose — generic circuit, type-specific data in d0-d3.
+  // For Transfer: d0-d3 are 4 x 32-byte ciphertext chunks (cpk + epk + amount).
   async proposeTransfer(
     recipientCpk: Uint8Array,
+    recipientEpk: Uint8Array,
     amount: bigint,
     vaultKey: CryptoKey,
   ): Promise<void> {
     this.logger?.info("proposeTransfer");
-    const dataHash = computeProposalHash(recipientCpk, amount);
-    const { enc0, enc1, enc2 } = await crypto.encryptProposalData(vaultKey, recipientCpk, amount);
-    await this.deployedContract.callTx.propose(0n, dataHash, enc0, enc1, enc2);
+    const { enc0, enc1, enc2, enc3 } = await crypto.encryptProposalData(
+      vaultKey,
+      recipientCpk,
+      recipientEpk,
+      amount,
+    );
+    await this.deployedContract.callTx.propose(0n, enc0, enc1, enc2, enc3);
   }
 
   async proposeAddSigner(commitment: Uint8Array): Promise<void> {
@@ -165,9 +169,12 @@ export class PolyPayAPI implements DeployedPolyPayAPI {
   async proposeSetThreshold(newThreshold: bigint): Promise<void> {
     this.logger?.info("proposeSetThreshold");
     const empty = new Uint8Array(32);
-    // Pack threshold as Bytes<32> (first byte)
+    // Pack threshold as Bytes<32> little-endian (LSB at byte 0). The circuit
+    // reads `d0 as Field as Uint<8>`; Midnight Field decodes bytes LE so the
+    // threshold byte MUST be at index 0 — putting it at byte 31 produces a
+    // value around 2^248 which overflows Uint<8>.
     const d0 = new Uint8Array(32);
-    d0[31] = Number(newThreshold); // little-endian field representation
+    d0[0] = Number(newThreshold);
     await this.deployedContract.callTx.propose(4n, d0, empty, empty, empty);
   }
 
@@ -175,6 +182,14 @@ export class PolyPayAPI implements DeployedPolyPayAPI {
   async approveTx(txId: bigint): Promise<void> {
     this.logger?.info({ txId }, "approveTx");
     await this.deployedContract.callTx.approveTx(txId);
+  }
+
+  // Re-evaluate a pending tx against the current threshold and stamp it ready
+  // when approvals already meet the new threshold. Needed after setThreshold
+  // lowers the threshold — approveTx only stamps at approval time.
+  async stampReady(txId: bigint): Promise<void> {
+    this.logger?.info({ txId }, "stampReady");
+    await this.deployedContract.callTx.stampReady(txId);
   }
 
   // Execute — set witness then call circuit
@@ -187,25 +202,25 @@ export class PolyPayAPI implements DeployedPolyPayAPI {
     this.logger?.info({ txId }, "executeTransfer");
 
     // Set private state for witness functions
-    const currentState = await this.providers.privateStateProvider.get(polyPayPrivateStateKey);
+    const currentState = await this.providers.privateStateProvider.get(mPayPrivateStateKey);
     if (!currentState) throw new Error("Private state not found");
 
-    const updatedState: PolyPayPrivateState = {
+    const updatedState: MPayPrivateState = {
       ...currentState,
       pendingTransferRecipient: recipientCpk,
       pendingTransferAmount: amount,
     };
-    await this.providers.privateStateProvider.set(polyPayPrivateStateKey, updatedState);
+    await this.providers.privateStateProvider.set(mPayPrivateStateKey, updatedState);
 
     await this.deployedContract.callTx.executeTransfer(txId, coinKey);
 
     // Clear pending transfer data
-    const cleanState: PolyPayPrivateState = {
+    const cleanState: MPayPrivateState = {
       ...currentState,
       pendingTransferRecipient: undefined,
       pendingTransferAmount: undefined,
     };
-    await this.providers.privateStateProvider.set(polyPayPrivateStateKey, cleanState);
+    await this.providers.privateStateProvider.set(mPayPrivateStateKey, cleanState);
   }
 
   async executeAddSigner(txId: bigint): Promise<void> {
@@ -229,7 +244,7 @@ export class PolyPayAPI implements DeployedPolyPayAPI {
       this.deployedContractAddress,
     );
     if (!contractState) return [];
-    const l = PolyPay.ledger(contractState.data);
+    const l = MPay.ledger(contractState.data);
     const txCount = l.txCounter;
     const txs: TransactionInfo[] = [];
     for (let i = 1n; i <= txCount; i++) {
@@ -239,6 +254,7 @@ export class PolyPayAPI implements DeployedPolyPayAPI {
           txType: l.txTypes.lookup(i),
           status: l.txStatuses.member(i) ? l.txStatuses.lookup(i) : 0n,
           approvals: l.txApprovalCounts.member(i) ? l.txApprovalCounts.lookup(i).read() : 0n,
+          d0: l.txData0.member(i) ? l.txData0.lookup(i) : new Uint8Array(32),
         });
       }
     }
@@ -250,7 +266,7 @@ export class PolyPayAPI implements DeployedPolyPayAPI {
       this.deployedContractAddress,
     );
     if (!contractState) return [];
-    const l = PolyPay.ledger(contractState.data);
+    const l = MPay.ledger(contractState.data);
     const signers: Uint8Array[] = [];
     for (const s of l.signers) {
       signers.push(s);
@@ -260,17 +276,18 @@ export class PolyPayAPI implements DeployedPolyPayAPI {
 
   async getEncryptedTransferData(
     txId: bigint,
-  ): Promise<{ enc0: Uint8Array; enc1: Uint8Array; enc2: Uint8Array } | null> {
+  ): Promise<{ enc0: Uint8Array; enc1: Uint8Array; enc2: Uint8Array; enc3: Uint8Array } | null> {
     const contractState = await this.providers.publicDataProvider.queryContractState(
       this.deployedContractAddress,
     );
     if (!contractState) return null;
-    const l = PolyPay.ledger(contractState.data);
-    if (!l.txData1.member(txId)) return null;
+    const l = MPay.ledger(contractState.data);
+    if (!l.txData0.member(txId)) return null;
     return {
-      enc0: l.txData1.lookup(txId),
-      enc1: l.txData2.lookup(txId),
-      enc2: l.txData3.lookup(txId),
+      enc0: l.txData0.lookup(txId),
+      enc1: l.txData1.lookup(txId),
+      enc2: l.txData2.lookup(txId),
+      enc3: l.txData3.lookup(txId),
     };
   }
 
@@ -279,7 +296,7 @@ export class PolyPayAPI implements DeployedPolyPayAPI {
       this.deployedContractAddress,
     );
     if (!contractState) return [];
-    const l = PolyPay.ledger(contractState.data);
+    const l = MPay.ledger(contractState.data);
     const count = l.depositCounter;
     const coins: { key: Uint8Array; value: bigint }[] = [];
     for (let i = 1n; i <= count; i++) {
@@ -298,46 +315,46 @@ export class PolyPayAPI implements DeployedPolyPayAPI {
 
   // Deploy & Join
   static async deploy(
-    providers: PolyPayProviders,
+    providers: MPayProviders,
     threshold: bigint,
     tokenColor: Uint8Array,
     logger?: Logger,
-  ): Promise<PolyPayAPI> {
+  ): Promise<MPayAPI> {
     logger?.info("deployContract");
     const deployedContract = await deployContract(providers, {
-      compiledContract: CompiledPolyPayContract,
-      privateStateId: polyPayPrivateStateKey,
-      initialPrivateState: await PolyPayAPI.getPrivateState(providers),
+      compiledContract: CompiledMPayContract,
+      privateStateId: mPayPrivateStateKey,
+      initialPrivateState: await MPayAPI.getPrivateState(providers),
       args: [threshold, tokenColor],
     });
     logger?.info(
       { address: deployedContract.deployTxData.public.contractAddress },
       "contractDeployed",
     );
-    return new PolyPayAPI(deployedContract, providers, logger);
+    return new MPayAPI(deployedContract, providers, logger);
   }
 
   static async join(
-    providers: PolyPayProviders,
+    providers: MPayProviders,
     contractAddress: ContractAddress,
     logger?: Logger,
-  ): Promise<PolyPayAPI> {
+  ): Promise<MPayAPI> {
     logger?.info({ contractAddress }, "joinContract");
     const deployedContract = await findDeployedContract(providers, {
       contractAddress,
-      compiledContract: CompiledPolyPayContract,
-      privateStateId: polyPayPrivateStateKey,
-      initialPrivateState: await PolyPayAPI.getPrivateState(providers),
+      compiledContract: CompiledMPayContract,
+      privateStateId: mPayPrivateStateKey,
+      initialPrivateState: await MPayAPI.getPrivateState(providers),
     });
     logger?.info({ contractAddress }, "contractJoined");
-    return new PolyPayAPI(deployedContract, providers, logger);
+    return new MPayAPI(deployedContract, providers, logger);
   }
 
   private static async getPrivateState(
-    providers: PolyPayProviders,
-  ): Promise<PolyPayPrivateState> {
-    const existing = await providers.privateStateProvider.get(polyPayPrivateStateKey);
-    return existing ?? createPolyPayPrivateState(utils.randomBytes(32));
+    providers: MPayProviders,
+  ): Promise<MPayPrivateState> {
+    const existing = await providers.privateStateProvider.get(mPayPrivateStateKey);
+    return existing ?? createMPayPrivateState(utils.randomBytes(32));
   }
 }
 

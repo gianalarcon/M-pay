@@ -1,5 +1,5 @@
 {
-  "name": "@polypay/contract",
+  "name": "@m-pay/contract",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,8 +16,8 @@
   },
   "scripts": {
     "clean": "rm -rf dist src/managed",
-    "compact": "compact compile src/polypay.compact src/managed/polypay && compact compile src/token.compact src/managed/token && compact compile src/test-shielded.compact src/managed/test-shielded",
-    "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/polypay.compact ./dist && cp ./src/token.compact ./dist",
+    "compact": "compact compile src/mpay.compact src/managed/mpay && compact compile src/token.compact src/managed/token",
+    "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/mpay.compact ./dist && cp ./src/token.compact ./dist",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }

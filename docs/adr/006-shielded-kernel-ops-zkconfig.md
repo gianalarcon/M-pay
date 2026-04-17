@@ -69,8 +69,8 @@ Unshielded ops were unaffected because they never trigger the `midnight/zswap/*`
 Wrap `FetchZkConfigProvider` with a `Proxy` that **rejects** `getProverKey` / `getVerifierKey` / `getZKIR` for any `circuitId` that starts with `midnight/`. This simulates the correct "file not found" behavior for system circuits, the SDK falls through to `undefined keyMaterial`, and the proof server uses its built-in system keys.
 
 ```ts
-// polypay/web/src/providers.ts
-const baseProvider = new FetchZkConfigProvider<PolyPayCircuitKeys>(baseUrl, fetch.bind(window));
+// m-pay/web/src/providers.ts
+const baseProvider = new FetchZkConfigProvider<MPayCircuitKeys>(baseUrl, fetch.bind(window));
 const keyMaterialProvider = new Proxy(baseProvider, {
   get(target, prop, receiver) {
     if (prop === "getProverKey" || prop === "getVerifierKey" || prop === "getZKIR") {

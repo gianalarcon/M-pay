@@ -1,28 +1,28 @@
-import { type Ledger } from "./managed/polypay/contract/index.js";
+import { type Ledger } from "./managed/mpay/contract/index.js";
 import { type Ledger as TokenLedger } from "./managed/token/contract/index.js";
 import { type WitnessContext } from "@midnight-ntwrk/compact-runtime";
 
-export type PolyPayPrivateState = {
+export type MPayPrivateState = {
   readonly secret: Uint8Array;
   readonly pendingTransferRecipient?: Uint8Array;
   readonly pendingTransferAmount?: bigint;
 };
 
-export const createPolyPayPrivateState = (secret: Uint8Array): PolyPayPrivateState => ({
+export const createMPayPrivateState = (secret: Uint8Array): MPayPrivateState => ({
   secret,
 });
 
 export const witnesses = {
   localSecret: ({
     privateState,
-  }: WitnessContext<Ledger, PolyPayPrivateState>): [PolyPayPrivateState, Uint8Array] => [
+  }: WitnessContext<Ledger, MPayPrivateState>): [MPayPrivateState, Uint8Array] => [
     privateState,
     privateState.secret,
   ],
 
   transferRecipient: ({
     privateState,
-  }: WitnessContext<Ledger, PolyPayPrivateState>): [PolyPayPrivateState, Uint8Array] => {
+  }: WitnessContext<Ledger, MPayPrivateState>): [MPayPrivateState, Uint8Array] => {
     if (!privateState.pendingTransferRecipient) {
       throw new Error("No pending transfer recipient set");
     }
@@ -31,7 +31,7 @@ export const witnesses = {
 
   transferAmount: ({
     privateState,
-  }: WitnessContext<Ledger, PolyPayPrivateState>): [PolyPayPrivateState, bigint] => {
+  }: WitnessContext<Ledger, MPayPrivateState>): [MPayPrivateState, bigint] => {
     if (privateState.pendingTransferAmount === undefined) {
       throw new Error("No pending transfer amount set");
     }

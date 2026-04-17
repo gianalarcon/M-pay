@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-01
 **Status:** Accepted
-**Context:** PolyPay multisig contract, Compact runtime 0.15.0
+**Context:** MPay multisig contract, Compact runtime 0.15.0
 
 ## Problem
 
@@ -15,7 +15,7 @@ The `threshold` value (number of approvals required to execute a transaction) is
 Replace `export ledger threshold: Uint<8>` with `export ledger thresholdHash: Bytes<32>`.
 
 ```
-thresholdHash = hash("polypay:threshold:" + threshold + salt)
+thresholdHash = hash("mpay:threshold:" + threshold + salt)
 ```
 
 Signers know the threshold off-chain. Execute circuits would take threshold as witness input, compute the hash, and verify it matches the on-chain hash.
@@ -71,4 +71,4 @@ Keep `threshold` as a public ledger field. The privacy gain from hiding it is mi
 
 - If Midnight adds support for **private circuit dispatch** (hiding which circuit was called), approval counting becomes harder and threshold privacy becomes more viable
 - If Midnight adds **homomorphic operations on private state**, approvals could be accumulated without revealing individual votes
-- These are protocol-level changes outside PolyPay's control
+- These are protocol-level changes outside MPay's control

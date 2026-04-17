@@ -1,22 +1,22 @@
-import { PolyPay, type PolyPayPrivateState } from "../../contract/src/index.js";
+import { MPay, type MPayPrivateState } from "../../contract/src/index.js";
 import type { MidnightProviders } from "@midnight-ntwrk/midnight-js-types";
 import type { DeployedContract, FoundContract } from "@midnight-ntwrk/midnight-js-contracts";
 import { type ProvableCircuitId } from "@midnight-ntwrk/compact-js";
 
-export type PolyPayCircuitKeys = ProvableCircuitId<PolyPay.Contract<PolyPayPrivateState>>;
+export type MPayCircuitKeys = ProvableCircuitId<MPay.Contract<MPayPrivateState>>;
 
-export const polyPayPrivateStateKey = "polyPayPrivateState";
-export type PrivateStateId = typeof polyPayPrivateStateKey;
+export const mPayPrivateStateKey = "mPayPrivateState";
+export type PrivateStateId = typeof mPayPrivateStateKey;
 
-export type PolyPayProviders = MidnightProviders<PolyPayCircuitKeys, PrivateStateId, PolyPayPrivateState>;
+export type MPayProviders = MidnightProviders<MPayCircuitKeys, PrivateStateId, MPayPrivateState>;
 
-export type PolyPayContract = PolyPay.Contract<PolyPayPrivateState>;
+export type MPayContract = MPay.Contract<MPayPrivateState>;
 
-export type DeployedPolyPayContract =
-  | DeployedContract<PolyPayContract>
-  | FoundContract<PolyPayContract>;
+export type DeployedMPayContract =
+  | DeployedContract<MPayContract>
+  | FoundContract<MPayContract>;
 
-export type PolyPayDerivedState = {
+export type MPayDerivedState = {
   readonly signerCount: bigint;
   readonly threshold: bigint;
   readonly finalized: boolean;
@@ -29,4 +29,5 @@ export type TransactionInfo = {
   readonly txType: bigint;
   readonly status: bigint;
   readonly approvals: bigint;
+  readonly d0: Uint8Array;
 };

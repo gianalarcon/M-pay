@@ -1,21 +1,39 @@
 import { useState, useEffect, useCallback } from "react";
-import type { DeployedPolyPayAPI, TransactionInfo } from "../../../api/src/index.js";
+import type { DeployedMPayAPI, TransactionInfo } from "../../../api/src/index.js";
 import { crypto as polyCrypto } from "../../../api/src/index.js";
 import type { DoAction } from "../types.js";
 import { TX_TYPE_LABELS, TX_TYPE_ICONS } from "../types.js";
 import { truncateHex } from "../utils.js";
 import { toHex } from "@midnight-ntwrk/midnight-js-utils";
-import { Icon } from "./ui.js";
+import {
+  MidnightBech32m,
+  ShieldedAddress,
+  ShieldedCoinPublicKey,
+  ShieldedEncryptionPublicKey,
+} from "@midnight-ntwrk/wallet-sdk-address-format";
+import { Icon, showToast } from "./ui.js";
 
-type DecryptedTransfer = { recipientCpk: string; amount: string };
+const NETWORK_ID = (import.meta.env.VITE_NETWORK_ID ?? "preprod") as string;
+
+function rebuildShieldedAddress(cpk: Uint8Array, epk: Uint8Array): string {
+  const addr = new ShieldedAddress(
+    new ShieldedCoinPublicKey(Buffer.from(cpk)),
+    new ShieldedEncryptionPublicKey(Buffer.from(epk)),
+  );
+  return MidnightBech32m.encode(NETWORK_ID as any, addr).toString();
+}
+
+type DecryptedTransfer = { recipientAddress: string; recipientCpk: string; amount: string };
 
 export function TransactionsTab({
   api,
   vaultKey,
+  threshold,
   doAction,
 }: {
-  api: DeployedPolyPayAPI;
+  api: DeployedMPayAPI;
   vaultKey: CryptoKey | null;
+  threshold: bigint;
   doAction: DoAction;
 }) {
   const [txList, setTxList] = useState<TransactionInfo[]>([]);
@@ -41,8 +59,10 @@ export function TransactionsTab({
                   encData.enc0,
                   encData.enc1,
                   encData.enc2,
+                  encData.enc3,
                 );
                 dec[tx.txId.toString()] = {
+                  recipientAddress: rebuildShieldedAddress(result.recipientCpk, result.recipientEpk),
                   recipientCpk: toHex(result.recipientCpk),
                   amount: result.amount.toString(),
                 };
@@ -68,6 +88,13 @@ export function TransactionsTab({
   const handleApprove = (tx: TransactionInfo) => {
     doAction(`Approve #${tx.txId}`, async () => {
       await api.approveTx(tx.txId);
+      await refreshList();
+    });
+  };
+
+  const handleStampReady = (tx: TransactionInfo) => {
+    doAction(`Stamp Ready #${tx.txId}`, async () => {
+      await api.stampReady(tx.txId);
       await refreshList();
     });
   };
@@ -142,6 +169,10 @@ export function TransactionsTab({
                   const isPending = tx.status === 0n;
                   const isReady = tx.status === 1n;
                   const isExecuted = tx.status === 2n;
+                  // Tx is stuck: approvals already meet threshold (e.g. after
+                  // setThreshold lowered it) but stamp wasn't re-evaluated.
+                  // Anyone can call stampReady to fix.
+                  const needsStamp = isPending && tx.approvals >= threshold && threshold > 0n;
                   const isActive = isPending || isReady;
                   const dec = decrypted[tx.txId.toString()];
                   return (
@@ -167,27 +198,64 @@ export function TransactionsTab({
                         {typeStr === "0" && dec ? (
                           <div className="text-xs space-y-1">
                             <div className="text-on-surface-variant">
-                              To: <span className="text-secondary">{truncateHex(dec.recipientCpk)}</span>
+                              To:{" "}
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(dec.recipientAddress);
+                                  showToast("Recipient address copied", "success");
+                                }}
+                                className="text-secondary hover:text-primary transition-colors cursor-pointer break-all"
+                                title="Click to copy full address"
+                              >
+                                {truncateHex(dec.recipientAddress)}
+                              </button>
                             </div>
                             <div className="text-on-surface-variant">
-                              Amount: <span className="text-on-surface font-bold">{dec.amount} tNIGHT</span>
+                              Amount: <span className="text-on-surface font-bold">{dec.amount} MPAY</span>
                             </div>
                           </div>
                         ) : typeStr === "0" ? (
                           <span className="text-xs text-outline italic flex items-center gap-1">
                             <Icon name="lock" className="text-sm" /> Encrypted
                           </span>
+                        ) : typeStr === "2" || typeStr === "3" ? (
+                          <div className="text-xs text-on-surface-variant">
+                            Commitment:{" "}
+                            <button
+                              onClick={() => {
+                                const hex = toHex(tx.d0);
+                                navigator.clipboard.writeText(hex);
+                                showToast("Commitment copied", "success");
+                              }}
+                              className="text-secondary hover:text-primary transition-colors cursor-pointer"
+                              title="Click to copy"
+                            >
+                              {truncateHex(toHex(tx.d0))}
+                            </button>
+                          </div>
+                        ) : typeStr === "4" ? (
+                          <div className="text-xs text-on-surface-variant">
+                            New threshold: <span className="text-on-surface font-bold">{tx.d0[0]}</span>
+                          </div>
                         ) : (
                           <span className="text-xs text-outline">--</span>
                         )}
                       </td>
                       <td className="px-8 py-5">
                         <span className="text-sm font-label font-bold text-on-surface">
-                          {tx.approvals.toString()}
+                          {tx.approvals.toString()}/{threshold.toString()}
                         </span>
                       </td>
                       <td className="px-8 py-5">
-                        {isPending && (
+                        {needsStamp && (
+                          <span className="relative inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold font-headline bg-amber-500/10 text-amber-400 border border-amber-500/20 cursor-help group">
+                            NEEDS STAMP
+                            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 hidden group-hover:block px-3 py-2 bg-surface-container-highest text-on-surface text-[11px] font-body font-normal normal-case tracking-normal leading-snug rounded-lg shadow-xl border border-outline-variant/30 z-50 text-left pointer-events-none">
+                              Approvals meet the current threshold, but the on-chain ready-stamp wasn't refreshed after <code className="text-amber-400">setThreshold</code>. Anyone can click "Stamp Ready" to fix it.
+                            </span>
+                          </span>
+                        )}
+                        {isPending && !needsStamp && (
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold font-headline bg-tertiary/10 text-tertiary border border-tertiary/20">
                             PENDING
                           </span>
@@ -204,7 +272,15 @@ export function TransactionsTab({
                         )}
                       </td>
                       <td className="px-8 py-5 text-right">
-                        {isPending && (
+                        {needsStamp && (
+                          <button
+                            onClick={() => handleStampReady(tx)}
+                            className="px-4 py-1.5 rounded-lg text-xs font-bold font-headline bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-all active:scale-95"
+                          >
+                            Stamp Ready
+                          </button>
+                        )}
+                        {isPending && !needsStamp && (
                           <button
                             onClick={() => handleApprove(tx)}
                             className="px-4 py-1.5 rounded-lg text-xs font-bold font-headline bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all active:scale-95"

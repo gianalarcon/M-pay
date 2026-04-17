@@ -22,7 +22,7 @@ witness localSecret(): Bytes<32>;
 // ============================================================
 
 export circuit deriveCommitment(secret: Bytes<32>): Bytes<32> {
-  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "polypay:pk:"), secret]);
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "mpay:pk:"), secret]);
 }
 
 // ============================================================
@@ -32,7 +32,7 @@ export circuit deriveCommitment(secret: Bytes<32>): Bytes<32> {
 constructor() {
   const secret = localSecret();
   const commitment = deriveCommitment(secret);
-  nonceSeed = disclose(persistentHash<Vector<2, Bytes<32>>>([pad(32, "polypay:tnonce:"), disclose(commitment)]));
+  nonceSeed = disclose(persistentHash<Vector<2, Bytes<32>>>([pad(32, "mpay:tnonce:"), disclose(commitment)]));
 }
 
 // ============================================================
@@ -57,7 +57,7 @@ export circuit mint(
   nonceSeed = disclose(mintNonce);
 
   // Mint shielded token to this contract (self)
-  const domain = pad(32, "polypay:token:");
+  const domain = pad(32, "mpay:token:");
   const coin = mintShieldedToken(
     disclose(domain),
     disclose(amount),
