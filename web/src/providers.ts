@@ -83,6 +83,20 @@ export const getIndexerUri = (): string => {
   return cachedIndexerUri;
 };
 
+// Lace keys balances by hex-encoded TokenType; the dApp stores tokenColor as
+// lowercase hex without 0x. Normalize both sides before comparing.
+const normalizeTokenType = (s: string): string => s.toLowerCase().replace(/^0x/, "");
+
+export const getShieldedBalance = async (tokenType: string): Promise<bigint> => {
+  const api = getConnectedAPI();
+  const balances = await api.getShieldedBalances();
+  const target = normalizeTokenType(tokenType);
+  for (const [k, v] of Object.entries(balances)) {
+    if (normalizeTokenType(k) === target) return v;
+  }
+  return 0n;
+};
+
 const initializeProviders = async (): Promise<MPayProviders> => {
   const networkId = (import.meta.env.VITE_NETWORK_ID ?? "preprod") as string;
   const connectedAPI = await connectToWallet(networkId);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { DeployedMPayAPI } from "../../../api/src/index.js";
 import type { DoAction } from "../types.js";
 import { hexToBytes } from "../utils.js";
@@ -7,13 +7,25 @@ import { Icon } from "./ui.js";
 export function DepositTab({
   api,
   tokenColor,
+  balance,
+  refreshBalance,
   doAction,
 }: {
   api: DeployedMPayAPI;
   tokenColor: string;
+  balance: bigint | null;
+  refreshBalance: () => Promise<void>;
   doAction: DoAction;
 }) {
   const [amount, setAmount] = useState("");
+
+  useEffect(() => {
+    refreshBalance();
+  }, [refreshBalance]);
+
+  const balanceDisplay = balance === null ? "--" : balance.toString();
+  const hasBalance = balance !== null && balance > 0n;
+
   return (
     <>
       <div className="space-y-2 mb-8">
@@ -38,7 +50,7 @@ export function DepositTab({
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-2">
             <label className="text-sm font-bold text-on-surface uppercase tracking-widest font-label">
               Amount
             </label>
@@ -54,6 +66,31 @@ export function DepositTab({
               <div className="absolute right-6 top-1/2 -translate-y-1/2">
                 <span className="font-headline font-bold text-primary">MPAY</span>
               </div>
+            </div>
+            <div className="flex items-center justify-between px-1 text-xs text-outline">
+              <div className="flex items-center gap-1.5">
+                <span>Available:</span>
+                <span className="font-label font-bold text-on-surface-variant">{balanceDisplay}</span>
+                <span className="font-label font-bold text-primary/80">MPAY</span>
+                <button
+                  type="button"
+                  onClick={() => refreshBalance()}
+                  className="ml-0.5 text-outline hover:text-on-surface transition-colors"
+                  title="Refresh balance"
+                >
+                  <Icon name="refresh" className="text-sm" />
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (balance !== null) setAmount(balance.toString());
+                }}
+                disabled={!hasBalance}
+                className="font-headline font-bold text-primary hover:underline disabled:opacity-40 disabled:no-underline"
+              >
+                Max
+              </button>
             </div>
           </div>
 
@@ -86,6 +123,7 @@ export function DepositTab({
               doAction("Deposit", async () => {
                 await api.deposit(coin);
                 setAmount("");
+                await refreshBalance();
               });
             }}
             disabled={!amount || !tokenColor}
