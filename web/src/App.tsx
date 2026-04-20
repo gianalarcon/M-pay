@@ -8,7 +8,7 @@ import {
   crypto as polyCrypto,
 } from "../../api/src/index.js";
 import { MPay, createMPayPrivateState, createTokenPrivateState } from "../../contract/src/index.js";
-import { getProviders, getConnectedAPI, getUnshieldedAddress, getShieldedAddress, setTxStageListener } from "./providers.js";
+import { getProviders, getConnectedAPI, getUnshieldedAddress, getShieldedAddress, getShieldedBalance, setTxStageListener } from "./providers.js";
 import { toHex } from "@midnight-ntwrk/midnight-js-utils";
 
 import type { Mode, Phase, WalletTab } from "./types.js";
@@ -64,6 +64,7 @@ export default function App() {
   const [tokenApi, setTokenApi] = useState<DeployedTokenAPI | null>(null);
   const [tokenAddress, setTokenAddress] = useState("");
   const [tokenColor, setTokenColor] = useState("");
+  const [walletMpayBalance, setWalletMpayBalance] = useState<bigint | null>(null);
 
   // Vault key for encrypted proposals
   const [vaultKey, setVaultKey] = useState<CryptoKey | null>(null);
@@ -137,6 +138,22 @@ export default function App() {
   useEffect(() => {
     if (tokenColor && !tokenColorInput) setTokenColorInput(tokenColor);
   }, [tokenColor, tokenColorInput]);
+
+  const refreshWalletBalance = useCallback(async () => {
+    if (!tokenColor) return;
+    try {
+      const bal = await getShieldedBalance(tokenColor);
+      setWalletMpayBalance(bal);
+    } catch (e) {
+      console.warn("Refresh MPAY balance failed:", e);
+    }
+  }, [tokenColor]);
+
+  useEffect(() => {
+    if (phase === "dashboard" && tokenColor) {
+      refreshWalletBalance();
+    }
+  }, [phase, tokenColor, refreshWalletBalance]);
 
   // Derive or restore secret
   const restoreOrDeriveSecret = useCallback(async (): Promise<Uint8Array> => {
@@ -740,7 +757,7 @@ export default function App() {
                 </div>
               )}
               {walletTab === "overview" && <DashboardOverview state={state} api={api} contractAddress={contractAddress} vaultKeyHex={vaultKeyHex} mySecret={mySecret} myCommitment={myCommitment} onNavigate={setWalletTab} />}
-              {walletTab === "deposit" && api && <DepositTab api={api} tokenColor={tokenColor} doAction={doAction} />}
+              {walletTab === "deposit" && api && <DepositTab api={api} tokenColor={tokenColor} balance={walletMpayBalance} refreshBalance={refreshWalletBalance} doAction={doAction} />}
               {walletTab === "propose-transfer" && api && <ProposeTransferTab api={api} vaultKey={vaultKey} myShieldedAddress={myShieldedAddress} doAction={doAction} />}
               {walletTab === "propose-signer" && api && <ProposeSignerTab api={api} doAction={doAction} myCommitment={myCommitment} />}
               {walletTab === "transactions" && api && <TransactionsTab api={api} vaultKey={vaultKey} threshold={state?.threshold ?? 0n} doAction={doAction} />}
