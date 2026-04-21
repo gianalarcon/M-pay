@@ -52,6 +52,10 @@ txStatuses.insert(disclose(txId), disclose(2 as Uint<8>));
 ## Setup — build and run the dApp
 
 ```bash
+git clone https://github.com/gianalarcon/M-pay.git
+cd M-pay
+git checkout repro/shielded-insertcoin-budget
+
 npm install
 cd contract && npm run compact && npm run build && cd ..
 cd web && npm run dev
