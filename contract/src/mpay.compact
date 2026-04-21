@@ -215,13 +215,13 @@ export circuit stampReady(txId: Uint<64>): [] {
 // EXECUTE (signer-only, when threshold met)
 // ============================================================
 
-// Option A: full coin spend, 3-read version.
-// Midnight platform limit: fields + reads ≤ ~20 when circuit has sendShielded.
-// MPay has 17 fields → max ~3 reads.
-//
-// Reads: signers.member (1), txStatuses.lookup (2), vaultCoin.lookup (3) = 3 reads.
-// Removed: finalized check (propose already enforces), hash check (signers trusted via approve).
-// sendShielded uses coin.value (full spend), not witness amount.
+// executeTransfer: send `amount` from the selected vault coin to recipient.
+// When amount == coin.value: no change, insertCoin branch skipped, tx succeeds.
+// When amount <  coin.value: change is returned, insertCoin branch runs, tx
+// fails at submission with Substrate `Custom error: 186` (EffectsCheckFailure).
+// Root cause appears to be Midnight's `fields + reads` budget when a circuit
+// uses `sendShielded` + `insertCoin`. MPay has 17 ledger fields.
+// See REPRODUCE.md at the repo root for evidence and investigation timeline.
 export circuit executeTransfer(txId: Uint<64>, coinKey: Bytes<32>): [] {
   const secret = localSecret();
   const commitment = deriveCommitment(secret);
@@ -234,7 +234,15 @@ export circuit executeTransfer(txId: Uint<64>, coinKey: Bytes<32>): [] {
   const recipient = left<ZswapCoinPublicKey, ContractAddress>(
     ZswapCoinPublicKey { bytes: disclose(recipientPk) }
   );
-  sendShielded(coin, recipient, coin.value as Uint<128>);
+
+  const amount = transferAmount();
+  const result = sendShielded(coin, recipient, disclose(amount));
+  if (result.change.is_some) {
+    depositCounter.increment(1);
+    const newKey = depositCounter.read() as Field as Bytes<32>;
+    vaultCoin.insertCoin(disclose(newKey), result.change.value, selfAsRecipient());
+  }
+
   vaultCoin.remove(disclose(coinKey));
   txStatuses.insert(disclose(txId), disclose(2 as Uint<8>));
 }

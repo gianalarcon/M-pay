@@ -39,6 +39,7 @@ export function ProposeTransferTab({
 }) {
   const [recipientCpk, setRecipientCpk] = useState("");
   const [selectedCoinKey, setSelectedCoinKey] = useState("");
+  const [amountInput, setAmountInput] = useState("");
   const [coins, setCoins] = useState<VaultCoin[]>([]);
   const [loadingCoins, setLoadingCoins] = useState(false);
 
@@ -59,6 +60,23 @@ export function ProposeTransferTab({
   }, [refreshCoins]);
 
   const selectedCoin = coins.find((c) => toHex(c.key) === selectedCoinKey) ?? null;
+
+  // Auto-fill amount when a coin is picked; user can override for partial transfer.
+  useEffect(() => {
+    if (selectedCoin) setAmountInput(selectedCoin.value.toString());
+  }, [selectedCoinKey, selectedCoin]);
+
+  const parsedAmount = (() => {
+    if (!amountInput) return null;
+    try {
+      const v = BigInt(amountInput);
+      return v > 0n ? v : null;
+    } catch {
+      return null;
+    }
+  })();
+  const amountValid = parsedAmount !== null && selectedCoin !== null && parsedAmount <= selectedCoin.value;
+  const isPartial = !!(selectedCoin && parsedAmount !== null && parsedAmount < selectedCoin.value);
 
   if (!vaultKey) {
     return (
@@ -105,7 +123,7 @@ export function ProposeTransferTab({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold font-headline uppercase tracking-widest text-outline ml-1">
-                Vault Coin (full-spend)
+                Source Coin
               </label>
               <button
                 onClick={refreshCoins}
@@ -158,12 +176,37 @@ export function ProposeTransferTab({
             )}
           </div>
 
+          <div className="space-y-3">
+            <label className="text-xs font-bold font-headline uppercase tracking-widest text-outline ml-1">
+              Amount (MPAY)
+            </label>
+            <input
+              type="number"
+              placeholder="0"
+              value={amountInput}
+              onChange={(e) => setAmountInput(e.target.value)}
+              disabled={!selectedCoin}
+              className="w-full bg-surface-container-highest border-none rounded-2xl py-5 px-6 font-label text-on-surface placeholder:text-outline/40 focus:ring-2 focus:ring-primary/50 transition-all outline-none disabled:opacity-50"
+            />
+            {selectedCoin && parsedAmount !== null && parsedAmount > selectedCoin.value && (
+              <p className="ml-1 text-xs text-red-400">
+                Amount exceeds selected coin value ({selectedCoin.value.toString()} MPAY).
+              </p>
+            )}
+            {isPartial && (
+              <p className="ml-1 text-xs text-amber-400">
+                Partial transfer — change ({(selectedCoin!.value - parsedAmount!).toString()} MPAY) will
+                be returned to vault via <code>insertCoin</code>-on-change. Currently triggers Substrate
+                error 186 at submission (see REPRODUCE.md).
+              </p>
+            )}
+          </div>
+
           <div className="flex gap-4 p-5 rounded-2xl bg-surface-container-high/50 border border-primary/10">
             <Icon name="lock" className="text-primary" />
             <p className="text-sm text-on-surface-variant leading-relaxed">
               Proposal data is encrypted with the vault key. Only signers who have the
               vault key can see recipient and amount. On-chain observers see only encrypted bytes.
-              The selected coin is spent in full on execute.
             </p>
           </div>
 
@@ -173,6 +216,14 @@ export function ProposeTransferTab({
                 alert("Select a vault coin first");
                 return;
               }
+              if (parsedAmount === null) {
+                alert("Enter a positive amount");
+                return;
+              }
+              if (parsedAmount > selectedCoin.value) {
+                alert("Amount exceeds selected coin value");
+                return;
+              }
               let keys: { cpk: Uint8Array; epk: Uint8Array };
               try {
                 keys = parseRecipient(recipientCpk);
@@ -180,15 +231,16 @@ export function ProposeTransferTab({
                 alert((e as Error).message);
                 return;
               }
-              const amount = selectedCoin.value;
+              const amount = parsedAmount;
               doAction("Propose Transfer", async () => {
                 await api.proposeTransfer(keys.cpk, keys.epk, amount, vaultKey);
                 setRecipientCpk("");
                 setSelectedCoinKey("");
+                setAmountInput("");
                 await refreshCoins();
               });
             }}
-            disabled={!recipientCpk || !selectedCoin}
+            disabled={!recipientCpk || !selectedCoin || !amountValid}
             className="w-full py-5 rounded-2xl gradient-btn text-on-primary font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
           >
             Propose Encrypted Transfer

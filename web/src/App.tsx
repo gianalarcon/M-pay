@@ -55,7 +55,7 @@ export default function App() {
   const [state, setState] = useState<MPayDerivedState | null>(null);
   const [contractAddress, setContractAddress] = useState("");
   const [walletTab, setWalletTab] = useState<WalletTab>("overview");
-  const [threshold, setThreshold] = useState("2");
+  const [threshold, setThreshold] = useState("1");
   const [joinAddr, setJoinAddr] = useState("");
   const [signerCommitment, setSignerCommitment] = useState("");
   const [signersRefreshKey, setSignersRefreshKey] = useState(0);

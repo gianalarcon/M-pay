@@ -108,11 +108,17 @@ export function TransactionsTab({
         if (!dec) throw new Error("Cannot execute: transfer data not decrypted (missing vault key?)");
         const recipientCpk = polyCrypto.hexToUint8(dec.recipientCpk);
         const amount = BigInt(dec.amount);
-        // Find vault coin with exact matching value (Option A: full-coin-spend)
+        // Pick smallest vault coin with value >= amount. When value > amount the
+        // circuit returns change via insertCoin — currently triggers error 186
+        // (see REPRODUCE.md). Exact match still works (change.is_some = false).
         const vaultCoins = await api.getVaultCoins();
         if (vaultCoins.length === 0) throw new Error("No coins in vault");
-        const coin = vaultCoins.find((c) => c.value === amount);
-        if (!coin) throw new Error(`No vault coin with exact value ${amount}. Available: ${vaultCoins.map((c) => c.value).join(", ")}`);
+        const eligible = vaultCoins.filter((c) => c.value >= amount);
+        if (eligible.length === 0) {
+          throw new Error(`No vault coin with value >= ${amount}. Available: ${vaultCoins.map((c) => c.value).join(", ")}`);
+        }
+        eligible.sort((a, b) => (a.value < b.value ? -1 : a.value > b.value ? 1 : 0));
+        const coin = eligible[0];
         await api.executeTransfer(tx.txId, coin.key, recipientCpk, amount);
       } else if (type === "2") {
         await api.executeAddSigner(tx.txId);
