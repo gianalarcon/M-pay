@@ -1,14 +1,18 @@
 # ADR-004: Token Metadata Strategy -- No Standard Exists on Midnight
 
-**Date:** 2026-04-13
-**Status:** Accepted
+**Date:** 2026-03-31 (superseded 2026-04-17)
+**Status:** Superseded — initial plan (on-chain metadata) was dropped after finding Midnight has no metadata standard at all
 **Context:** Midnight ledger-v8 8.0.3, dapp-connector-api 4.0.1, Lace wallet
 
 ## Problem
 
 Custom shielded tokens should display a name/symbol in the user's wallet. MPay's vault token should appear as "POLY" or similar, not as an unnamed hash.
 
-## Investigation
+## Original decision (2026-03-31) — dropped
+
+The original ADR proposed storing `tokenName` and `tokenSymbol` as `Opaque<"string">` fields in the token contract ledger, set via constructor. Plan was to migrate to an off-chain Midnight metadata server once infrastructure was available.
+
+## Actual state (2026-04-17)
 
 After implementing the shielded token flow with `mintShieldedToken`, we investigated how Lace displays token names and found:
 
