@@ -92,6 +92,13 @@ export function TransactionsTab({
     });
   };
 
+  const handlePrune = (tx: TransactionInfo) => {
+    doAction(`Prune #${tx.txId}`, async () => {
+      await api.pruneTx(tx.txId);
+      await refreshList();
+    });
+  };
+
   const handleStampReady = (tx: TransactionInfo) => {
     doAction(`Stamp Ready #${tx.txId}`, async () => {
       await api.stampReady(tx.txId);
@@ -164,7 +171,11 @@ export function TransactionsTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/5">
-                {txList.map((tx) => {
+                {(() => {
+                  // Max txId acts as current txCounter (counter only increments).
+                  // Pending tx is "stale" when 100+ newer proposals exist.
+                  const maxTxId = txList.reduce<bigint>((m, t) => (t.txId > m ? t.txId : m), 0n);
+                  return txList.map((tx) => {
                   const typeStr = tx.txType.toString();
                   const isPending = tx.status === 0n;
                   const isReady = tx.status === 1n;
@@ -174,6 +185,7 @@ export function TransactionsTab({
                   // Anyone can call stampReady to fix.
                   const needsStamp = isPending && tx.approvals >= threshold && threshold > 0n;
                   const isActive = isPending || isReady;
+                  const canPrune = isExecuted || (isPending && maxTxId > tx.txId + 100n);
                   const dec = decrypted[tx.txId.toString()];
                   return (
                     <tr
@@ -296,13 +308,23 @@ export function TransactionsTab({
                             Execute
                           </button>
                         )}
-                        {isExecuted && (
+                        {isExecuted && !canPrune && (
                           <span className="text-xs font-label text-outline italic">Completed</span>
+                        )}
+                        {canPrune && (
+                          <button
+                            onClick={() => handlePrune(tx)}
+                            className="ml-2 px-3 py-1.5 rounded-lg text-xs font-bold font-headline bg-surface-container-highest text-outline border border-outline-variant/30 hover:text-on-surface hover:border-outline-variant/60 transition-all active:scale-95"
+                            title={isExecuted ? "Prune executed tx data" : "Prune stale pending proposal"}
+                          >
+                            Prune
+                          </button>
                         )}
                       </td>
                     </tr>
                   );
-                })}
+                });
+                })()}
               </tbody>
             </table>
           </div>

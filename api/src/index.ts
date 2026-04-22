@@ -57,6 +57,9 @@ export interface DeployedMPayAPI {
   // (rescue after executeSetThreshold lowers the threshold).
   stampReady: (txId: bigint) => Promise<void>;
 
+  // Remove a tx's ledger data (executed or stale pending with 100+ newer proposals).
+  pruneTx: (txId: bigint) => Promise<void>;
+
   // Execute (transfer reads from witness)
   executeTransfer: (
     txId: bigint,
@@ -190,6 +193,11 @@ export class MPayAPI implements DeployedMPayAPI {
   async stampReady(txId: bigint): Promise<void> {
     this.logger?.info({ txId }, "stampReady");
     await this.deployedContract.callTx.stampReady(txId);
+  }
+
+  async pruneTx(txId: bigint): Promise<void> {
+    this.logger?.info({ txId }, "pruneTx");
+    await this.deployedContract.callTx.pruneTx(txId);
   }
 
   // Execute — set witness then call circuit
