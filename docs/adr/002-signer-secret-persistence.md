@@ -1,6 +1,6 @@
 # ADR-002: Signer Secret Cannot Be Deterministically Derived from Wallet
 
-**Date:** 2026-03-31
+**Date:** 2026-04-13
 **Status:** Accepted
 **Context:** Midnight Lace Wallet dApp Connector API 4.0.1, BIP-340 Schnorr Signatures
 
@@ -57,11 +57,9 @@ Even though the signature is non-deterministic, using `signData` instead of `cry
 - Future improvement: export/import secret functionality (already shown in UI via IdentityCard)
 - If Midnight adds a `deriveAppKey(appId)` method to the connector API in the future, this decision should be revisited
 
-## Addendum: Unified Secret Across Contracts (2026-04-01, revised 2026-04-17)
+## Unified Secret Across Contracts
 
-The same 32-byte secret is used for both the MPay and token contracts. Both contracts define `deriveCommitment(secret)` using `persistentHash`.
-
-**Current state (2026-04-17):** both contracts use the **same domain separator** `"mpay:pk:"`. This means `deriveCommitment(secret)` produces the **same 32-byte commitment** on both chains — a signer's commitment on the token contract is identical to their commitment on the multisig. An on-chain observer can link actions across the two contracts by matching commitment values.
+The same 32-byte secret is used for both the MPay and token contracts. Both contracts define `deriveCommitment(secret)` using `persistentHash`, and both use the **same domain separator** `"mpay:pk:"`. This means `deriveCommitment(secret)` produces the **same 32-byte commitment** on both chains — a signer's commitment on the token contract is identical to their commitment on the multisig. An on-chain observer can link actions across the two contracts by matching commitment values.
 
 This is an accepted trade-off for the hackathon scope:
 

@@ -290,3 +290,39 @@ export circuit executeSetThreshold(txId: Uint<64>): [] {
   threshold = disclose(newVal);
   txStatuses.insert(disclose(txId), disclose(2 as Uint<8>));
 }
+
+// ============================================================
+// CLEANUP — reclaim ledger state (open to anyone)
+// ============================================================
+//
+// Removes a transaction's metadata (txTypes, txStatuses, txApprovalCounts,
+// txData0-3) from the ledger. Does NOT touch txNullifiers — those are
+// permanent anti-replay protection.
+//
+// Two allowed paths:
+//   (a) Executed (status == 2): history no longer needed.
+//   (b) Stale pending (status == 0) with `txCounter.read() > txId + 100`:
+//       at least 100 newer proposals exist, so this one is presumed
+//       abandoned. The 100-proposal buffer prevents a single signer from
+//       griefing live proposals.
+//
+// No signer gate; no shielded op; no finalize check (callable even post-use).
+
+export circuit pruneTx(txId: Uint<64>): [] {
+  assert(txStatuses.member(disclose(txId)), "Tx not found");
+  const status = txStatuses.lookup(disclose(txId));
+  // Pending: must be stale. Executed: always prunable. Ready: rejected.
+  if (status == 0) {
+    assert(txCounter.read() > disclose(txId) + 100, "Tx not stale yet (need 100 newer proposals)");
+  } else {
+    assert(status == 2, "Cannot prune ready tx (must be executed or stale pending)");
+  }
+
+  txTypes.remove(disclose(txId));
+  txStatuses.remove(disclose(txId));
+  txApprovalCounts.remove(disclose(txId));
+  txData0.remove(disclose(txId));
+  txData1.remove(disclose(txId));
+  txData2.remove(disclose(txId));
+  txData3.remove(disclose(txId));
+}

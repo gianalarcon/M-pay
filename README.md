@@ -126,6 +126,17 @@ In the Transactions tab:
 
 > **Recipient receives the coin only if they execute the transfer themselves.** `sendShielded` does not currently create coin ciphertexts for external wallets, so the recipient should be a signer who executes.
 
+### 8. Prune transaction history
+
+Transaction metadata stays on-chain after use and counts toward ledger state. Click **Prune** on a row to reclaim its storage. The button is open to anyone and appears when:
+
+- The tx is **EXECUTED** (history no longer needed).
+- The tx is **PENDING** and at least 100 newer proposals exist (presumed abandoned; the 100-proposal buffer prevents griefing of live proposals).
+
+`READY` txs cannot be pruned — execute them first.
+
+Approval nullifiers (`txNullifiers`) are kept permanently to prevent replay, similar to Ethereum nonces.
+
 > **Important — back up your signer secret and vault key.** Browsers can lose state. See [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md#back-up-your-keys).
 
 ## Known Limitations
