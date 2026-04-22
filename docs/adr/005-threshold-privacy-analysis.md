@@ -1,6 +1,6 @@
 # ADR-005: Why Threshold Remains Public on Ledger
 
-**Date:** 2026-04-01
+**Date:** 2026-04-13
 **Status:** Accepted
 **Context:** MPay multisig contract, Compact runtime 0.15.0
 

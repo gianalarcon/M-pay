@@ -1,18 +1,14 @@
 # ADR-004: Token Metadata Strategy -- No Standard Exists on Midnight
 
-**Date:** 2026-03-31 (superseded 2026-04-17)
-**Status:** Superseded — initial plan (on-chain metadata) was dropped after finding Midnight has no metadata standard at all
+**Date:** 2026-04-13
+**Status:** Accepted
 **Context:** Midnight ledger-v8 8.0.3, dapp-connector-api 4.0.1, Lace wallet
 
 ## Problem
 
-Custom shielded tokens should display a name/symbol in the user's wallet. MPay's vault token should appear as "POLY" or similar, not as an unnamed hash.
+Custom shielded tokens should display a name/symbol in the user's wallet. MPay's vault token should appear as "MPAY" or similar, not as an unnamed hash.
 
-## Original decision (2026-03-31) — dropped
-
-The original ADR proposed storing `tokenName` and `tokenSymbol` as `Opaque<"string">` fields in the token contract ledger, set via constructor. Plan was to migrate to an off-chain Midnight metadata server once infrastructure was available.
-
-## Actual state (2026-04-17)
+## Investigation
 
 After implementing the shielded token flow with `mintShieldedToken`, we investigated how Lace displays token names and found:
 
@@ -26,11 +22,11 @@ After implementing the shielded token flow with `mintShieldedToken`, we investig
 
 ## Decision
 
-Do nothing on-chain. Display the token name (`POLY`) inside the MPay dApp UI only. Lace will always show "Shielded unnamed token (...)" for custom shielded tokens until Midnight ships a metadata standard.
+Do nothing on-chain. Display the token name (`MPAY`) inside the MPay dApp UI only. Lace will always show "Shielded unnamed token (...)" for custom shielded tokens until Midnight ships a metadata standard.
 
 - `token.compact` contains no `tokenName` / `tokenSymbol` fields
 - Constructor takes no metadata arguments
-- The dApp's UI hardcodes `POLY` as the display label for vault POLY tokens
+- The dApp's UI hardcodes `MPAY` as the display label for vault MPAY tokens
 
 ## Why not implement a local registry?
 
@@ -40,9 +36,9 @@ Options we considered and rejected:
 
 ## Consequences
 
-- Users see "POLY" in MPay and "Shielded unnamed token (...)" in Lace. Acceptable for hackathon; confusing for production.
+- Users see "MPAY" in MPay and "Shielded unnamed token (...)" in Lace. Acceptable for hackathon; confusing for production.
 - When Midnight ships a token metadata standard (forum thread, NMKR community, or otherwise), MPay should adopt it and re-visit this ADR.
-- If the dApp ever supports multiple custom tokens, the hardcoded `POLY` label needs to become configurable per-token.
+- If the dApp ever supports multiple custom tokens, the hardcoded `MPAY` label needs to become configurable per-token.
 
 ## References
 
