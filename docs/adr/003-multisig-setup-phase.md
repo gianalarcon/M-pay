@@ -1,8 +1,8 @@
 # ADR-003: Why Multisig Requires a Three-Phase Setup
 
-**Date:** 2026-03-31 (updated 2026-04-17)
+**Date:** 2026-04-13
 **Status:** Accepted
-**Context:** Midnight Compact runtime 0.15.0, MPay contract (originally 12 impure circuits, now 9 after unifying propose variants)
+**Context:** Midnight Compact runtime 0.15.0, MPay contract (10 impure circuits after unifying propose variants)
 
 ## Problem
 

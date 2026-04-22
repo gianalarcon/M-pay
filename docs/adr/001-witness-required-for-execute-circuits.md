@@ -1,6 +1,6 @@
 # ADR-001: Witness Required for Execute Circuits
 
-**Date:** 2026-03-30
+**Date:** 2026-04-13
 **Status:** Accepted
 **Context:** Midnight Compact runtime 0.14.0, SDK 3.0.0
 
@@ -50,16 +50,14 @@ Add signer verification (`localSecret` + `deriveCommitment` + `signers.member`) 
 
 ## Circuit Count
 
-Reduced from 13 to 12 impure circuits:
+MPay has 10 impure circuits, within the deploy transaction size limit.
 
-**Removed:** `withdraw` (personal transfer, not core to multisig)
+**Removed:** `withdraw` (personal transfer, not core to multisig).
+
+**Unified:** the four `propose*` circuits (proposeTransfer, proposeAddSigner, proposeRemoveSigner, proposeSetThreshold) collapsed into a single generic `propose(txType, d0, d1, d2, d3)`. The `txType` parameter selects transfer / addSigner / removeSigner / setThreshold semantics; type-specific data is packed into `d0-d3` (`Bytes<32>` slots). Execute circuits still branch by type because their read/write patterns differ too much to unify under Midnight's `fields + reads ≤ 20` budget when a circuit uses `sendShielded`.
 
 **Modified (added signer check):**
 - `executeTransfer`
 - `executeAddSigner`
 - `executeRemoveSigner`
 - `executeSetThreshold`
-
-## Addendum (2026-04-17)
-
-Circuit count further reduced from 12 → 9 by unifying the four `propose*` circuits into a single generic `propose(txType, d0, d1, d2, d3)`. The `txType` parameter selects transfer / addSigner / removeSigner / setThreshold semantics; type-specific data is packed into `d0-d3` (`Bytes<32>` slots). Execute circuits still branch by type because their read/write patterns differ too much to unify under Midnight's `fields + reads ≤ 20` budget when a circuit uses `sendShielded`.
