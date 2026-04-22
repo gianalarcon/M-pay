@@ -12,7 +12,7 @@
 
 ## Contracts
 
-### mpay.compact (10 circuits)
+### mpay.compact (11 circuits)
 
 | Category | Circuits |
 |----------|----------|
@@ -22,6 +22,7 @@
 | Approve | approveTx |
 | Rescue | stampReady (re-evaluates pending tx against current threshold; open to anyone) |
 | Execute | executeTransfer, executeAddSigner, executeRemoveSigner, executeSetThreshold |
+| Cleanup | pruneTx (removes tx metadata; executed always prunable, pending requires 100+ newer proposals) |
 | Pure | deriveCommitment, computeNullifier |
 
 17 ledger fields. `executeTransfer` reads 3 of them (signers.member, txStatuses.lookup, vaultCoin.lookup) to stay within Midnight's `fields + reads ≤ 20` budget when using `sendShielded`.
