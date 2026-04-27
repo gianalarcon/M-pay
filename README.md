@@ -1,5 +1,7 @@
 # M-pay — Private Multisig Wallet on Midnight
 
+[**VIDEO DEMO LINK**](https://app.screencastify.com/manage/videos/oOKRdfCWcqdG2KL58Ykw)
+
 A privacy-preserving multisig wallet built on the **Midnight blockchain (Preprod network)**. Signers are identified by ZK commitments (hash of a browser-local secret), not public keys. Nobody on-chain can tell which signer approved which transaction. Transfer recipient and amount are encrypted with a vault key shared among signers.
 
 ## Prerequisites
