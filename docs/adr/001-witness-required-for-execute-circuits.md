@@ -50,7 +50,7 @@ Add signer verification (`localSecret` + `deriveCommitment` + `signers.member`) 
 
 ## Circuit Count
 
-MPay has 10 impure circuits, within the deploy transaction size limit.
+MPay has 11 impure circuits, within the deploy transaction size limit.
 
 **Removed:** `withdraw` (personal transfer, not core to multisig).
 
