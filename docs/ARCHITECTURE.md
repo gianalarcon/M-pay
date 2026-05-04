@@ -69,7 +69,7 @@ On decryption, `TransactionsTab` rebuilds the full `mn_shield-addr_...` via the 
 
 | File | Purpose |
 |------|---------|
-| `contract/src/mpay.compact` | Main multisig contract (10 circuits, 17 ledger fields) |
+| `contract/src/mpay.compact` | Main multisig contract (11 circuits, 17 ledger fields) |
 | `contract/src/token.compact` | Custom shielded token (`mintShieldedToken`) |
 | `contract/src/witnesses.ts` | Witness functions (`localSecret`, `transferRecipient`, `transferAmount`) |
 | `api/src/index.ts` | MPayAPI (deploy/join, propose/approve/execute) |

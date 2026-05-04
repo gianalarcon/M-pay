@@ -89,16 +89,19 @@ Then mint tokens to any shielded address (paste `mn_shield-addr_...` or click "U
 In the Setup tab:
 
 - **Step 1: Deploy Shielded Token** — if you haven't deployed yet, the card routes you to the Token tab (skip this if you're joining an existing multisig)
-- **Deploy Multisig** — paste the token color, set threshold, deploy. You become the first signer. The dApp generates a random **vault key** and stores it in localStorage. Share the hex vault key with co-signers out-of-band (copy from the dashboard card after deploy).
-- **Join Existing** — paste the multisig contract address + import the vault key. The dApp checks you are a registered signer on-chain; otherwise join is rejected.
+- **Deploy Multisig** — paste the token color, set threshold, deploy. You become the first signer (the on-chain `owner`). The dApp generates a random **vault key** and stores it in localStorage. Copy the hex from the "Share with Signers" card on the next screen and send to co-signers out-of-band.
+- **Join Existing** — paste the vault key hex AND the multisig contract address in the same form, then click Join. Both are required — the dApp won't let you join "blind" without a vault key. The dApp also checks you are a registered signer on-chain; otherwise join is rejected.
 
 ### 4. Add Signers + Finalize
 
-Init-signers phase:
+Init-signers phase (deployer/`owner` only):
 
+- The "Share with Signers" card shows the contract address + vault key hex with copy buttons — send both to each co-signer
 - Paste each co-signer's commitment (they generate it by connecting their own wallet and copy from Identity card)
 - "Current Signers" card auto-refreshes after each add
 - When `signerCount >= threshold`, click **Finalize** to lock the contract
+
+> **Co-signers who join before finalize** see an "Awaiting Finalization" screen instead of the dashboard. It auto-unlocks once the deployer finalizes — no action needed on their side. The dashboard is gated on `finalized == true` to prevent operations against a half-configured contract.
 
 ### 5. Deposit
 

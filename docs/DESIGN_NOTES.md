@@ -4,7 +4,7 @@
 
 | What we built | What we excluded | Why |
 |---------------|------------------|-----|
-| 10-circuit MPay + 1-circuit token | Separate proposeX for each tx type | Generic `propose(txType, d0-d3)` saved 3 circuits to stay under ~12 circuit deploy limit |
+| 11-circuit MPay + 1-circuit token | Separate proposeX for each tx type | Generic `propose(txType, d0-d3)` saved 3 circuits to stay under ~12 circuit deploy limit |
 | Full-coin-spend executeTransfer | Partial-value transfers with change | `insertCoin`-on-change triggers Substrate error 186 above 15 ledger fields; MPay has 17 |
 | 3-read executeTransfer | Hash verification of encrypted recipient | `fields + reads ≤ 20` when circuit uses `sendShielded` — removed hash check to fit budget |
 | Vault key encryption (AES-GCM) for proposal data | Per-signer encryption (hybrid ECIES) | Per-signer needs 2 new ledger maps → pushes fields beyond executeTransfer budget |
@@ -44,11 +44,11 @@ MPay stores user-managed keys in browser `localStorage`. They are **not synced a
 ### What to back up manually
 
 1. **Signer secret** — IdentityCard in the Setup/Dashboard sidebar shows the 64-char hex. Copy and store somewhere safe (password manager, encrypted note). If this is lost and you weren't added under a new commitment, you permanently lose your signer role on that multisig.
-2. **Vault key** — shown in the Dashboard card right after deploy and on subsequent visits. Copy the 64-char hex. Share it out-of-band with every co-signer. Each co-signer should also back up their own copy.
+2. **Vault key** — after deploy, shown in the "Share with Signers" card on the Add Signers screen (with copy button next to the contract address); also visible in the Dashboard card on subsequent visits. Copy the 64-char hex. Share it out-of-band with every co-signer. Each co-signer should also back up their own copy.
 
 ### What happens on Disconnect
 
-The "Disconnect" button in the sidebar clears `mpay:contract` + `mpay:vault-key` but **keeps** `mpay:secret`. Next connect auto-restores your identity but requires re-joining a multisig (paste address + import vault key).
+The "Disconnect" button in the sidebar clears `mpay:contract` + `mpay:vault-key` but **keeps** `mpay:secret`. Next connect auto-restores your identity but requires re-joining a multisig (paste contract address + vault key in the same Join form — both required).
 
 ### Switching browsers / machines
 
